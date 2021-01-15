@@ -35,8 +35,8 @@
 *********************************************************************/
 #include <rclcpp/rclcpp.hpp>
 #include <usb_cam/usb_cam.h>
-// #include <image_transport/image_transport.h>
-// #include <camera_info_manager/camera_info_manager.h>
+#include <image_transport/image_transport.hpp>
+#include <camera_info_manager/camera_info_manager.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sstream>
 // #include <std_srvs/srv/Empty.h>
@@ -58,8 +58,8 @@ class UsbCamNode : public rclcpp::Node
 public:
   // shared image message
   sensor_msgs::msg::Image::SharedPtr img_;
-  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_pub_;
-  // parameters
+  std::shared_ptr<image_transport::CameraPublisher> image_pub_;
+  // paramtrters
   std::string video_device_name_ = "/dev/video0";
   std::string frame_id_ = "map";
 
@@ -81,8 +81,8 @@ public:
   // bool autofocus_, autoexposure_, auto_white_balance_;
 
   std::string camera_name_;
-  // std::string camera_info_url_;
-  // boost::shared_ptr<camera_info_manager::CameraInfoManager> cinfo_;
+  std::string camera_info_url_;
+  std::shared_ptr<camera_info_manager::CameraInfoManager> cinfo_;
 
   UsbCam cam_;
 
@@ -111,7 +111,11 @@ public:
     // demos/intra_process_demo/include/image_pipeline/camera_node.hpp
     img_ = std::make_shared<sensor_msgs::msg::Image>();
     // advertise the main image topic
-    image_pub_ = this->create_publisher<sensor_msgs::msg::Image>("image_raw", 100);
+    image_pub_ = std::make_shared<image_transport::CameraPublisher>(
+      image_transport::create_camera_publisher(this, "image_raw"));
+    camera_name_ = this->declare_parameter("camera_name", "head_camera");
+    camera_info_url_ = this->declare_parameter("camera_info_url", "");
+    cinfo_ = std::make_shared<camera_info_manager::CameraInfoManager>(this, camera_name_, camera_info_url_);
   }
 
   void init()
@@ -150,7 +154,6 @@ public:
     node_.param("white_balance", white_balance_, 4000);
 #endif
 
-    get_parameter_or("camera_name", camera_name_, std::string("head_camera"));
 #if 0
     // load the camera info
     node_.param("camera_frame_id", img_.header.frame_id, std::string("head_camera"));
@@ -296,7 +299,14 @@ public:
     image_pub_.publish(img_, *ci);
 #endif
     // INFO(img_->data.size() << " " << img_->width << " " << img_->height << " " << img_->step);
-    image_pub_->publish(*img_);
+    auto ci = std::make_unique<sensor_msgs::msg::CameraInfo>(cinfo_->getCameraInfo());
+    if (ci->width != img_->width || ci->height != img_->height) {
+      *ci = sensor_msgs::msg::CameraInfo{};
+      ci->height = img_->height;
+      ci->width = img_->width;
+    }
+    ci->header = img_->header;
+    image_pub_->publish(*img_, *ci);
 
     return true;
   }
