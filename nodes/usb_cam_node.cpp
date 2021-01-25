@@ -113,30 +113,25 @@ public:
     // advertise the main image topic
     image_pub_ = std::make_shared<image_transport::CameraPublisher>(
       image_transport::create_camera_publisher(this, "image_raw"));
-    camera_name_ = this->declare_parameter("camera_name", "head_camera");
-    camera_info_url_ = this->declare_parameter("camera_info_url", "");
-    cinfo_ = std::make_shared<camera_info_manager::CameraInfoManager>(this, camera_name_, camera_info_url_);
-  }
-
-  void init()
-  {
-    // grab the parameters
-    get_parameter_or("video_device", video_device_name_, video_device_name_);
-
-    // possible values: mmap, read, userptr
-    get_parameter_or("io_method", io_method_name_, io_method_name_);
-    get_parameter_or("frame_id", frame_id_, frame_id_);
-    // possible values: yuyv, uyvy, mjpeg, yuvmono10, rgb24
-    get_parameter_or("pixel_format", pixel_format_name_, pixel_format_name_);
-    get_parameter_or("framerate", framerate_, framerate_);
+    video_device_name_ = declare_parameter("video_device", "/dev/video0");
+    frame_id_ = declare_parameter("frame_id", "map");
+    io_method_name_ = declare_parameter("io_method", "mmap");
+    pixel_format_name_ = declare_parameter("pixel_format", "yuyv");
+    framerate_ = declare_parameter("frame_rate", 15);
     if (framerate_ <= 0)
     {
       RCLCPP_ERROR(get_logger(), "bad framerate %d", framerate_);
       return;
     }
-    get_parameter_or("image_width", image_width_, image_width_);
-    get_parameter_or("image_height", image_height_, image_height_);
+    image_width_ = declare_parameter("image_width", 640);
+    image_height_ = declare_parameter("image_height", 480);
+    camera_name_ = declare_parameter("camera_name", "head_camera");
+    camera_info_url_ = declare_parameter("camera_info_url", "");
+    cinfo_ = std::make_shared<camera_info_manager::CameraInfoManager>(this, camera_name_, camera_info_url_);
+  }
 
+  void init()
+  {
 #if 0
     node_.param("brightness", brightness_, -1);  // 0-255, -1 "leave alone"
     node_.param("contrast", contrast_, -1);  // 0-255, -1 "leave alone"
