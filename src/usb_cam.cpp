@@ -1004,7 +1004,7 @@ void UsbCam::open_device(void)
 
 void UsbCam::start(const std::string& dev, io_method io_method,
 		   pixel_format pixel_format, int image_width, int image_height,
-		   int framerate)
+		   int framerate, double timestamp_offset_ms)
 {
   camera_dev_ = dev;
 
@@ -1039,6 +1039,8 @@ void UsbCam::start(const std::string& dev, io_method io_method,
     ROS_ERROR("Unknown pixel format.");
     exit(EXIT_FAILURE);
   }
+
+  timestamp_offset_ms_ = timestamp_offset_ms;
 
   open_device();
   init_device(image_width, image_height, framerate);
@@ -1084,7 +1086,7 @@ void UsbCam::grab_image(sensor_msgs::Image* msg)
   // grab the image
   grab_image();
   // stamp the image
-  msg->header.stamp = ros::Time::now();
+  msg->header.stamp = ros::Time::now() - ros::Duration(timestamp_offset_ms_ / 1000.0);
   // fill the info
   if (monochrome_)
   {

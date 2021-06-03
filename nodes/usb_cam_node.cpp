@@ -60,6 +60,7 @@ public:
   int image_width_, image_height_, framerate_, exposure_, brightness_, contrast_, saturation_, sharpness_, focus_,
       white_balance_, gain_;
   bool autofocus_, autoexposure_, auto_white_balance_;
+  double timestamp_offset_ms_;
   boost::shared_ptr<camera_info_manager::CameraInfoManager> cinfo_;
 
   UsbCam cam_;
@@ -111,6 +112,8 @@ public:
     // enable/disable auto white balance temperature
     node_.param("auto_white_balance", auto_white_balance_, true);
     node_.param("white_balance", white_balance_, 4000);
+    // set timestamp offset
+    node_.param("timestamp_offset_ms", timestamp_offset_ms_, 0.0); // [ms]
 
     // load the camera info
     node_.param("camera_frame_id", img_.header.frame_id, std::string("head_camera"));
@@ -135,7 +138,7 @@ public:
 
 
     ROS_INFO("Starting '%s' (%s) at %dx%d via %s (%s) at %i FPS", camera_name_.c_str(), video_device_name_.c_str(),
-        image_width_, image_height_, io_method_name_.c_str(), pixel_format_name_.c_str(), framerate_);
+        image_width_, image_height_, io_method_name_.c_str(), pixel_format_name_.c_str(), framerate_, timestamp_offset_ms_);
 
     // set the IO method
     UsbCam::io_method io_method = UsbCam::io_method_from_string(io_method_name_);
@@ -157,7 +160,7 @@ public:
 
     // start the camera
     cam_.start(video_device_name_.c_str(), io_method, pixel_format, image_width_,
-		     image_height_, framerate_);
+		     image_height_, framerate_, timestamp_offset_ms_);
 
     // set camera parameters
     if (brightness_ >= 0)
