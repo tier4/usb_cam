@@ -112,7 +112,7 @@ public:
     img_ = std::make_shared<sensor_msgs::msg::Image>();
     // advertise the main image topic
     image_pub_ = std::make_shared<image_transport::CameraPublisher>(
-      image_transport::create_camera_publisher(this, "image_raw"));
+      image_transport::create_camera_publisher(this, "image_raw", rmw_qos_profile_sensor_data));
     video_device_name_ = declare_parameter("video_device", "/dev/video0");
     frame_id_ = declare_parameter("frame_id", "map");
     io_method_name_ = declare_parameter("io_method", "mmap");
