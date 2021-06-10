@@ -40,6 +40,7 @@
 #include <camera_info_manager/camera_info_manager.h>
 #include <sstream>
 #include <std_srvs/Empty.h>
+#include <mutex>
 
 namespace usb_cam {
 
@@ -52,6 +53,9 @@ public:
   // shared image message
   sensor_msgs::Image img_;
   image_transport::CameraPublisher image_pub_;
+  ros::Timer image_grab_timer_, image_pub_timer_;
+  std::mutex image_mutex_;
+  ros::Time image_prev_time_;
 
   // parameters
   std::string video_device_name_, io_method_name_, pixel_format_name_, camera_name_, camera_info_url_;
@@ -60,13 +64,12 @@ public:
   int image_width_, image_height_, framerate_, exposure_, brightness_, contrast_, saturation_, sharpness_, focus_,
       white_balance_, gain_;
   bool autofocus_, autoexposure_, auto_white_balance_;
-  double timestamp_offset_ms_;
+  double timestamp_offset_ms_, publish_rate_;
   boost::shared_ptr<camera_info_manager::CameraInfoManager> cinfo_;
 
   UsbCam cam_;
 
   ros::ServiceServer service_start_, service_stop_;
-
 
 
   bool service_start_cap(std_srvs::Empty::Request  &req, std_srvs::Empty::Response &res )
@@ -114,6 +117,8 @@ public:
     node_.param("white_balance", white_balance_, 4000);
     // set timestamp offset
     node_.param("timestamp_offset_ms", timestamp_offset_ms_, 0.0); // [ms]
+    // set publish rate
+    node_.param("publish_rate", publish_rate_, 30.0); // [Hz]
 
     // load the camera info
     node_.param("camera_frame_id", img_.header.frame_id, std::string("head_camera"));
@@ -138,7 +143,7 @@ public:
 
 
     ROS_INFO("Starting '%s' (%s) at %dx%d via %s (%s) at %i FPS", camera_name_.c_str(), video_device_name_.c_str(),
-        image_width_, image_height_, io_method_name_.c_str(), pixel_format_name_.c_str(), framerate_, timestamp_offset_ms_);
+        image_width_, image_height_, io_method_name_.c_str(), pixel_format_name_.c_str(), framerate_);
 
     // set the IO method
     UsbCam::io_method io_method = UsbCam::io_method_from_string(io_method_name_);
@@ -222,6 +227,18 @@ public:
         cam_.set_v4l_parameter("focus_absolute", focus_);
       }
     }
+
+    // start grab timer
+    image_grab_timer_ = node_.createTimer(ros::Duration(1./framerate_),
+      [&](const ros::TimerEvent& event) { 
+        if (cam_.is_capturing()) {
+          if (!take_image()) ROS_WARN("USB camera did not respond in time.");
+        } });
+
+    // start publish timer
+    image_prev_time_ = ros::Time(0);
+    image_pub_timer_ = node_.createTimer(ros::Duration(1./publish_rate_),
+      [&](const ros::TimerEvent& event) { send_image(); });
   }
 
   virtual ~UsbCamNode()
@@ -229,42 +246,36 @@ public:
     cam_.shutdown();
   }
 
-  bool take_and_send_image()
+  void send_image()
+  {
+    // grab the camera info
+    std::lock_guard<std::mutex> lock(image_mutex_);
+    if ((img_.header.stamp - image_prev_time_).toSec() > 1e-5)
+    {
+      sensor_msgs::CameraInfoPtr ci(new sensor_msgs::CameraInfo(cinfo_->getCameraInfo()));
+      ci->header.frame_id = img_.header.frame_id;
+      ci->header.stamp = img_.header.stamp;
+
+      // publish the image
+      image_pub_.publish(img_, *ci);
+    }
+    else
+    {
+      ROS_WARN_THROTTLE(3.0, "Skip publish! V4L frame rate = %i, Publish rate = %.1f",
+        framerate_, publish_rate_);
+    }
+
+    image_prev_time_ = img_.header.stamp;
+  }
+
+  bool take_image()
   {
     // grab the image
+    std::lock_guard<std::mutex> lock(image_mutex_);
     cam_.grab_image(&img_);
 
-    // grab the camera info
-    sensor_msgs::CameraInfoPtr ci(new sensor_msgs::CameraInfo(cinfo_->getCameraInfo()));
-    ci->header.frame_id = img_.header.frame_id;
-    ci->header.stamp = img_.header.stamp;
-
-    // publish the image
-    image_pub_.publish(img_, *ci);
-
     return true;
   }
-
-  bool spin()
-  {
-    ros::Rate loop_rate(this->framerate_);
-    while (node_.ok())
-    {
-      if (cam_.is_capturing()) {
-        if (!take_and_send_image()) ROS_WARN("USB camera did not respond in time.");
-      }
-      ros::spinOnce();
-      loop_rate.sleep();
-
-    }
-    return true;
-  }
-
-
-
-
-
-
 };
 
 }
@@ -273,6 +284,6 @@ int main(int argc, char **argv)
 {
   ros::init(argc, argv, "usb_cam");
   usb_cam::UsbCamNode a;
-  a.spin();
+  ros::spin();
   return EXIT_SUCCESS;
 }
