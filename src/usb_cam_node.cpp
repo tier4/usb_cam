@@ -185,7 +185,7 @@ void UsbCamNode::get_params()
     } else if (parameter.get_name() == "publish_rate") {
       publish_rate_ = parameter.as_double();
     } else {
-      RCLCPP_WARN(this->get_logger(), "Invalid parameter name: %s", parameter.get_name());
+      RCLCPP_WARN(this->get_logger(), "Invalid parameter name: %s", parameter.get_name().c_str());
     }
   }
 }
